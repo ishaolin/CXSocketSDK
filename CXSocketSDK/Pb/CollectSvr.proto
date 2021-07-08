@@ -1,0 +1,196 @@
+syntax = "proto3";
+//version = 2.0.0
+//option java_package = "com.xintai.conn.protocol";
+//option java_package = "com.xintai.zconnectapi.protocol";
+//option java_package = "com.xintai.channel.pb";
+
+/**
+* 新加入多端登录
+*/
+option java_package = "com.elegant.socket.model";
+option java_outer_classname = "CollectServerProtobuf";
+
+message CollectMessage {
+  MessageType messageType = 1;
+  bytes   data = 2;
+}
+
+
+
+//客户端登录的秘钥
+message ServerLoginRequest{
+    string key = 1;
+}
+
+//将对应的ChannelId返回给服务
+message ServerLoginRespone{
+    string key = 1;
+    string channelId = 2;   //返回生成的channelId
+    string ip = 3;  //当前connser机器的ip
+}
+
+//服务调用server发来要给端上下发的消息
+message ServerMessage{
+    string userid =1;
+    string content = 2;     //主要消息内容
+    string serverId = 3;    //具体业务的id
+    int64 seqid = 4;
+    bool retType = 5;   //是否要重试
+    Client client = 6;  //客户端
+}
+
+//各端枚举
+enum Client{
+    phone = 0;    //手机
+    car = 1;  //车机
+}
+
+message LoginRequest {
+    string userId = 1;
+    string phone = 2;
+    //用户服务token
+    string token = 3;
+    string  version= 4;
+    string sign = 5; //签名
+    Client client = 6;  //区分是什么端
+}
+
+
+
+message LoginResponse {
+   string userId = 1;
+   string key = 2;
+   LoginErrorCode errorCode = 3;    //失败码
+
+}
+
+enum LoginErrorCode{
+    SUCCESS = 0;        //登录成功
+    ERROR_CLOSE =1;     //登录失败，关闭连接
+    ERROR_RETRY =2;     //登录失败，重试
+}
+
+/**服务端下发消息
+*
+*/
+message PushMessageResponse{
+   string content = 1;
+   int64 timestamp = 2;
+   int64 seqId = 3;     //消息的id ，回执时带回
+   string serverId = 4; //回执时带回,具体的服务id
+   bool retType = 5; // 是否要回执 true回执，false不带回执
+}
+
+/**
+* 客户端回执消息
+*/
+message PushMessageRequest{
+    int64 seqId = 1;    //消息唯一标识id
+    string serverId = 2;   //服务端的id
+    int64 timestamp = 3;
+}
+
+
+message PingMessage{
+    int32 seqId = 1;
+}
+
+message PongMessage{
+    int32 seqId = 1;
+}
+
+message UserInfoMessage{
+    string userId = 1;
+    OS deviceType = 2; // 系统类型
+    string nettype = 3; //网络类型
+    string model = 4; //型号
+    string manufacturer = 5; //生产厂商
+    string brand = 6;
+    string appVersion = 7;
+    string version= 8;      //长链接version
+    Client client = 9; //客户端类型
+}
+
+message UserInfoResponse{
+    bool result = 1;    //成功返回true
+}
+
+enum CoordinateType {
+    GCJ                 = 0; //火星经纬度，国内GPS默认取的是火星坐标系
+    BAIDU_COORDINATE    = 1; //百度坐标系
+    SOSO_GCJ_COORDINATE = 2; //腾讯和高德和国测局坐标系
+    WGS84               = 3; //地球经纬度
+}
+
+
+/**
+*坐标信息
+*/
+message CoordinateRequest {
+    int64  timestamp = 1;       //必填，Unix时间戳，精确到毫秒，取GPS定位时间
+    double lat       = 2;       //必填，纬度
+    double lon       = 3;       //必填，经度
+    CoordinateType type = 4;    //必填
+    int32 provider = 5;        //定位来源
+    double  course = 6;   //方向   0是正北
+    double  speed = 7;    //速度
+}
+
+
+/**
+* 坐标包，N个坐标装到一个包里
+*/
+message CoordinatePackageRequest {
+    uint64               timestamp = 1;  //Unix时间戳，精确到毫秒，坐标包上传本地时间，用于做坐标时间排序
+    string                  userId = 2;  //用户id
+    repeated CoordinateRequest coordinate = 3; //坐标点
+    string                cityId = 4;  //取不到，设置为0即可
+    string                adCode = 5;  //城市编码adcode
+
+}
+
+
+enum MessageType {
+    PING = 0;
+    PONG = 1;
+    LOGIN_REQUEST = 2;
+    LOGIN_RESPONSE = 3;
+    PUSH_MESSAGE_RESPONSE = 4;
+    GATEWAY_PUSH = 5;
+    OK = 6;          //网关间消息
+    ACK = 23;         //客户端回执
+    SERVER_LOGIN_REQUEST = 7;   //服务器登录消息
+    SEVER_LOGIN_RESPONSE = 8;   //服务器登录回执
+    SERVER_MESSAGE = 9;
+    COORDINATE_PULL = 10;     //C端上传坐标消息
+    CLOSECHANNEL = 12;          //他人上线，踢出消息
+    USERINFO = 13; //用户信息消息
+    USERINFORESPONSE = 14;  //用户消息的返回
+    PUSH_MESSAGE_REQUEST = 15;   //push消息回执
+    UPSTREAM_MESSAGE = 16;       //表情发送给用户（端-->服务端）
+    CLIENT_MESSAGE = 17; //客户端消息 ，新版本统一走这个
+}
+
+//关闭连接的返回消息
+message CloseChannel{
+    string errorMessage = 1;
+    string userId = 2;
+    uint64 timeStamp = 3;
+    CloseChannelReason reason = 4;
+}
+
+
+/**
+*   服务端关闭Channel的原因
+*/
+enum CloseChannelReason{
+    WRONGTOKEN = 0;
+    OTHERLOGIN = 1;
+}
+
+
+//平台类型
+enum OS{
+    ANDROID = 0;
+    IOS = 1;
+}

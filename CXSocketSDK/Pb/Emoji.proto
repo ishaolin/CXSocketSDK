@@ -1,0 +1,22 @@
+syntax = "proto3";
+//version = 1.0.0
+//option java_package = "com.xintai.conn.protocol";
+//option java_package = "com.xintai.zconnectapi.protocol";
+option java_package = "com.elegant.socket.model";
+option java_outer_classname = "EmojiServerProtobuf";
+
+/**
+* C端表情上行消息
+*/
+message UpStreamMessage {
+    string productLine = 1;
+    UpStreamMessageType type = 2;
+    string body =3;
+    int64 upstreamTime = 4;
+}
+
+
+enum UpStreamMessageType{
+    EMOJI_REQUEST = 0;
+    EMOJI_ACK = 1;
+}

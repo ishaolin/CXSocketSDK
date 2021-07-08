@@ -1,0 +1,29 @@
+syntax = "proto3";
+//version = 1.0.0
+//option java_package = "com.xintai.conn.protocol";
+//option java_package = "com.xintai.zconnectapi.protocol";
+option java_package = "com.zhidao.mobile.socket.lite.model";
+option java_outer_classname = "ParseMessageServerProtobuf";
+
+/**
+* 车机影像管理和手机app 交互
+*/
+message ContentLiteMessage {
+    MessageLiteType type = 1; //类型
+    bytes body = 2; //具体业务
+}
+
+
+message PingLiteRequest {
+    int64 seqId = 1;
+}
+
+message PushLiteMessage {
+    string type = 1; //具体业务类型（PUSH_FILE_TO_APP为车机推送文件到手机，其他等等）
+    string content = 2; //业务json字符串
+}
+
+enum MessageLiteType {
+    PING_LITE = 0; //心跳
+    PUSH_LITE_MESSAGE = 1; //消息下发
+}

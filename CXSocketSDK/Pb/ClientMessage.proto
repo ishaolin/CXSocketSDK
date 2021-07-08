@@ -1,0 +1,18 @@
+syntax = "proto3";
+//version = 2.0.0
+//option java_package = "com.xintai.dispatchapi";
+//option java_package = "com.xintai.channel.pb";
+//option java_package = "com.xintai.zconnectapi.protocol";
+/**
+* 新加入多端登录
+*/
+option java_package = "com.elegant.socket.model";
+option java_outer_classname = "ClientProtobuf";
+
+//客户端上来的消息
+message ClientMessage{
+    string productLine = 1;
+    uint64 traceId = 2;
+    bytes data = 3;
+}
+
