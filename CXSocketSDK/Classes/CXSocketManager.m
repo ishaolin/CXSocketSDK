@@ -34,8 +34,8 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     long _writeTag;
     int32_t _heartbeatSeqId;
     NSInteger _reconnectCount;
-    NSTimer *_heartbeatTimer;
-    NSTimer *_reconnectTimer;
+    CXTimer *_heartbeatTimer;
+    CXTimer *_reconnectTimer;
     CXSocketMessageParser *_messageParser;
     NSMutableDictionary<NSNumber *, NSNumber *> *_receiptRelations;
     NSURL *_connectURL;
@@ -410,16 +410,16 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     }
     
     _heartbeatSeqId = 0;
-    _heartbeatTimer = [NSTimer timerWithTimeInterval:30.0
-                                              target:self
-                                            selector:@selector(handleHeartbeatTimer:)
-                                            userInfo:nil
-                                             repeats:YES];
-    [[NSRunLoop currentRunLoop] addTimer:_heartbeatTimer forMode:NSRunLoopCommonModes];
+    _heartbeatTimer = [CXTimer taskTimerWithConfig:^(CXTimerConfig *config) {
+        config.target = self;
+        config.action = @selector(handleHeartbeatTimer:);
+        config.interval = 30.0;
+        config.repeats = YES;
+    }];
     [_heartbeatTimer fire];
 }
 
-- (void)handleHeartbeatTimer:(NSTimer *)heartbeatTimer{
+- (void)handleHeartbeatTimer:(CXTimer *)heartbeatTimer{
     if(!self.isConnected){
         return;
     }
@@ -454,16 +454,16 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     }
     
     _reconnectCount = 0;
-    _reconnectTimer = [NSTimer timerWithTimeInterval:SOCKET_RECONNECT_TIMEOUT
-                                              target:self
-                                            selector:@selector(handleReconnectTimer:)
-                                            userInfo:nil
-                                             repeats:YES];
-    [[NSRunLoop currentRunLoop] addTimer:_reconnectTimer forMode:NSRunLoopCommonModes];
+    _reconnectTimer = [CXTimer taskTimerWithConfig:^(CXTimerConfig *config) {
+        config.target = self;
+        config.action = @selector(handleReconnectTimer:);
+        config.interval = SOCKET_RECONNECT_TIMEOUT;
+        config.repeats = YES;
+    }];
     [_reconnectTimer fire];
 }
 
-- (void)handleReconnectTimer:(NSTimer *)reconnectTimer{
+- (void)handleReconnectTimer:(CXTimer *)reconnectTimer{
     _reconnectCount ++;
     
     if(_reconnectCount <= SOCKET_RECONNECT_COUNT){

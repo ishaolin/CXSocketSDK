@@ -10,7 +10,7 @@
 #import <CXFoundation/CXFoundation.h>
 
 @interface CXCoordinateSocketUploader () {
-    NSTimer *_uploadTimer;
+    CXTimer *_uploadTimer;
     
     NSMutableArray<CoordinateRequest *> *_coordinates;
     CLLocation *_location;
@@ -102,16 +102,16 @@
         return;
     }
     
-    _uploadTimer = [NSTimer timerWithTimeInterval:1.0
-                                           target:self
-                                         selector:@selector(handleUploadTimer:)
-                                         userInfo:nil
-                                          repeats:YES];
-    [[NSRunLoop currentRunLoop] addTimer:_uploadTimer forMode:NSRunLoopCommonModes];
+    _uploadTimer = [CXTimer taskTimerWithConfig:^(CXTimerConfig *config) {
+        config.target = self;
+        config.action = @selector(handleUploadTimer:);
+        config.interval = 1.0;
+        config.repeats = YES;
+    }];
     [_uploadTimer fire];
 }
 
-- (void)handleUploadTimer:(NSTimer *)uploadTimer{
+- (void)handleUploadTimer:(CXTimer *)uploadTimer{
     _timerCount ++;
     if(_timerCount / self.timeInterval < 0){
         return;
