@@ -17,16 +17,6 @@
 #define SOCKET_RECONNECT_TIMEOUT         5.0     // 自动重连时间
 #define SOCKET_RECONNECT_COUNT           5       // 自动重连次数
 #define SOCKET_MSG_WAIT_RECEIPT_TIMEOUT  10.0    // 等待回执的超时时间
-#define SOCKET_CACHE_CONNECTION_URL_KEY  @"SOCKET_CACHE_CONNECTION_URL_KEY"
-
-static inline void SocketCacheConnectionURLSet(NSURL *URL){
-    [[NSUserDefaults standardUserDefaults] setURL:URL forKey:SOCKET_CACHE_CONNECTION_URL_KEY];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-}
-
-static inline NSURL *SocketCacheConnectionURLGet(void){
-    return [[NSUserDefaults standardUserDefaults] URLForKey:SOCKET_CACHE_CONNECTION_URL_KEY];
-}
 
 @interface CXSocketManager () <GCDAsyncSocketDelegate, CXSocketMessageParserDelegate> {
     GCDAsyncSocket *_asyncSocket;
@@ -68,8 +58,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         _receiptRelations = [NSMutableDictionary dictionary];
         _receiptRelations[@(MessageType_LoginResponse)] = @(MessageType_LoginRequest);
         _receiptRelations[@(MessageType_Userinforesponse)] = @(MessageType_Userinfo);
-        
-        SocketCacheConnectionURLSet(nil);
     }
     
     return self;
@@ -96,8 +84,8 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     }
     
     _connectURL = URL;
-    if([_asyncSocket connectToHost:_connectURL.host
-                            onPort:_connectURL.port.intValue
+    if([_asyncSocket connectToHost:URL.host
+                            onPort:URL.port.intValue
                        withTimeout:SOCKET_CONNECT_TIMEOUT
                              error:nil]){
         return CXSocketCodeOK;
@@ -119,13 +107,12 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         return CXSocketCodeNotConnected;
     }
     
-    long tag = _writeTag ++;
     CollectMessage *message = [CollectMessage message];
     message.data_p = msgData.msgData.data;
     message.messageType = msgData.msgType;
-    _messageQueue[@(tag)] = msgData;
+    _messageQueue[@(_writeTag ++)] = msgData;
     
-    [_asyncSocket writeData:message.delimitedData withTimeout:timeout tag:tag];
+    [_asyncSocket writeData:message.delimitedData withTimeout:timeout tag:_writeTag];
     [self removeWaitForReceiptTimeoutMessageDataIfNeed];
     
     return CXSocketCodeOK;
@@ -139,7 +126,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     NSMutableArray<NSNumber *> *timeoutMessageKeys = [NSMutableArray array];
     uint64_t timeStamp = (uint64_t)([NSDate date].timeIntervalSince1970 * 1000);
     [_messageQueue enumerateKeysAndObjectsUsingBlock:^(NSNumber * _Nonnull key, CXSocketMessageData * _Nonnull obj, BOOL * _Nonnull stop) {
-        if(!obj.isReceiptEnabled){
+        if(!obj.receiptBlock){
             return;
         }
         
@@ -163,7 +150,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         messageData.sendCallback(code, error);
     }
     
-    if(messageData.isReceiptEnabled && messageData.receiptBlock){
+    if(messageData.receiptBlock){
         return;
     }
     
@@ -190,8 +177,8 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         return;
     }
     
-    if(messageData.isReceiptEnabled){
-        !messageData.receiptBlock ?: messageData.receiptBlock(receipt, error);
+    if(messageData.receiptBlock){
+        messageData.receiptBlock(receipt, error);
     }
     
     [_messageQueue removeObjectForKey:dataKey];
@@ -202,13 +189,12 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
 }
 
 - (CXSocketCode)reconnect:(BOOL)isAutoRetry{
-    NSURL *URL = SocketCacheConnectionURLGet();
-    if(!URL){
+    if(!_connectURL){
         return CXSocketCodeBadParam;
     }
     
     if(!isAutoRetry){
-        return [self privateConnectWithURL:URL];
+        return [self privateConnectWithURL:_connectURL];
     }
     
     [self addReconnectTimer];
@@ -217,7 +203,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
 
 - (CXSocketCode)disconnect{
     _connectURL = nil;
-    SocketCacheConnectionURLSet(nil);
     
     if(_asyncSocket.isDisconnected){
         return CXSocketCodeNotConnected;
@@ -232,7 +217,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         return NO;
     }
     
-    return SocketCacheConnectionURLGet() != nil;
+    return _connectURL != nil;
 }
 
 - (void)socketMessageParser:(CXSocketMessageParser *)parser didParseMessage:(NSData *)data{
@@ -242,7 +227,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
        message.messageType != MessageType_Pong &&
        message.messageType != MessageType_Userinforesponse){
         if(message.messageType == MessageType_Closechannel){
-            SocketCacheConnectionURLSet(nil);
+            _connectURL = nil; // 被服务端关闭，不自动重连
         }
         
         if([self.delegate respondsToSelector:@selector(socketManager:didReceiveMessage:error:)]){
@@ -273,11 +258,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
 }
 
 - (void)socket:(GCDAsyncSocket *)socket didConnectToHost:(NSString *)host port:(uint16_t)port{
-    if(_connectURL){
-        SocketCacheConnectionURLSet(_connectURL);
-        _connectURL = nil;
-    }
-    
     _heartbeatSeqId = 0;
     _writeTag = 0;
     
@@ -294,7 +274,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     NSAssert(loginMessage != nil, @"[socket] login message is nil.");
     
     CXSocketMessageData *loginMessageData = [[CXSocketMessageData alloc] initWithMsgData:loginMessage msgType:MessageType_LoginRequest];
-    loginMessageData.receiptEnabled = YES; // 需要回执
     loginMessageData.sendCallback = ^(CXSocketCode code, NSError * _Nullable error) {
         if(code == CXSocketCodeOK){
             LOG_INFO(@"[socket] login message send success.");
@@ -322,7 +301,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
             [self sendLoginMessage];
         }else if(loginResponse.errorCode == LoginErrorCode_ErrorClose){
             LOG_INFO(@"[socket] login failed. socket connection closed.");
-            SocketCacheConnectionURLSet(nil);
+            _connectURL = nil; // 登录失败，连接被关闭，不自动重连
             
             if([self.delegate respondsToSelector:@selector(socketManagerDidConsumeReconnectionTimes:)]){
                 [self.delegate socketManagerDidConsumeReconnectionTimes:self];
@@ -341,7 +320,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     NSAssert(userInfoMessage != nil, @"[socket] user info message is nil.");
     
     CXSocketMessageData *userInfoMessageData = [[CXSocketMessageData alloc] initWithMsgData:userInfoMessage msgType:MessageType_Userinfo];
-    userInfoMessageData.receiptEnabled = YES; // 需要回执
     userInfoMessageData.sendCallback = ^(CXSocketCode code, NSError * _Nullable error) {
         if(code == CXSocketCodeOK){
             LOG_INFO(@"[socket] user info message send success.");
@@ -374,11 +352,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
 }
 
 - (void)socketDidDisconnect:(GCDAsyncSocket *)socket withError:(NSError *)error{
-    if(_connectURL && error.code == GCDAsyncSocketConnectTimeoutError){
-        SocketCacheConnectionURLSet(_connectURL);
-    }
-    _connectURL = nil;
-    
     CXSocketCode code = CXSocketCodeInternalError;
     if(error.code == GCDAsyncSocketConnectTimeoutError){ // 超时
         code = CXSocketCodeTimeout;
@@ -424,9 +397,8 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
         return;
     }
     
-    _heartbeatSeqId ++;
     PingMessage *heartbeat = [PingMessage message];
-    heartbeat.seqId = _heartbeatSeqId;
+    heartbeat.seqId = _heartbeatSeqId ++;
     
     CXSocketMessageData *messageData = [[CXSocketMessageData alloc] initWithMsgData:heartbeat msgType:MessageType_Ping];
     messageData.sendCallback = ^(CXSocketCode code, NSError * _Nullable error) {
@@ -473,7 +445,7 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
             LOG_INFO(@"[socket] reconnect retry %@ ....", @(_reconnectCount));
         }
     }else{
-        SocketCacheConnectionURLSet(nil);
+        _connectURL = nil;
         [self removeReconnectTimer];
         
         if([self.delegate respondsToSelector:@selector(socketManagerDidConsumeReconnectionTimes:)]){
@@ -500,7 +472,6 @@ static inline NSURL *SocketCacheConnectionURLGet(void){
     }
     
     if(self = [super init]){
-        _receiptEnabled = NO;
         _timeStamp = (uint64_t)([NSDate date].timeIntervalSince1970 * 1000);
         _msgData = msgData;
         _msgType = msgType;

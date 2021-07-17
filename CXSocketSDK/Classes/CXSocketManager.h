@@ -68,12 +68,10 @@ typedef void(^CXSocketMessageReceiptBlock)(CollectMessage * _Nullable receipt, N
 @property (nonatomic, strong, readonly) GPBMessage *msgData;
 @property (nonatomic, assign, readonly) MessageType msgType;
 @property (nonatomic, assign, readonly) uint64_t timeStamp;
-
-/// Defaults NO，It is recommended to keep the default value.
-@property (nonatomic, assign, getter = isReceiptEnabled) BOOL receiptEnabled;
-
 @property (nonatomic, copy, nullable) CXSocketCallback sendCallback;
-@property (nonatomic, copy, nullable) CXSocketMessageReceiptBlock receiptBlock; // Not implemented
+
+// 未实现，请不要赋值，否则会导致对象无法释放
+@property (nonatomic, copy, nullable) CXSocketMessageReceiptBlock receiptBlock;
 
 - (instancetype)initWithMsgData:(nonnull GPBMessage *)msgData msgType:(MessageType)msgType;
 
